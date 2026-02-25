@@ -1,0 +1,17 @@
+{
+  "question": "Should startups adopt a fully remote work model by default?",
+  "responses": [
+    {
+      "model": "gpt-4o",
+      "text": "Startups can benefit from remote work because hiring becomes global. It often reduces office costs. However, early-stage teams may struggle with alignment without strong process. A hybrid approach is usually safer than fully remote in the first year."
+    },
+    {
+      "model": "claude-3.5",
+      "text": "Remote-first helps startups recruit talent regardless of location and can improve employee flexibility. But full remote can hurt spontaneous collaboration and onboarding quality. For many seed-stage companies, hybrid is the practical default."
+    },
+    {
+      "model": "gemini-1.5",
+      "text": "A fully remote model can lower burn rate and expand hiring. With disciplined documentation, teams can stay aligned remotely. Still, new startups should not assume fully remote always works; team cohesion may improve with periodic in-person collaboration."
+    }
+  ]
+}

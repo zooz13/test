@@ -1,0 +1,4 @@
+# Prototype uses only Python standard library.
+# Optional for NLI contradiction scoring:
+# transformers>=4.40
+# torch

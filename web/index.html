@@ -1,0 +1,852 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Perspective Comparator Prototype</title>
+  <style>
+    :root {
+      --bg: #f3f7f8;
+      --bg-accent: #e8f1ed;
+      --panel: #ffffff;
+      --line: #d7e0dc;
+      --line-strong: #b7c6bf;
+      --text: #102128;
+      --muted: #5a6b70;
+      --brand: #0f766e;
+      --brand-2: #134e4a;
+      --soft: #edf6f3;
+      --shadow: 0 18px 45px rgba(8, 33, 31, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(1200px 540px at 8% -10%, #fdf7df 0, rgba(253,247,223,0.45) 30%, transparent 70%),
+        radial-gradient(900px 600px at 92% -15%, #dff1eb 0, rgba(223,241,235,0.55) 35%, transparent 72%),
+        linear-gradient(180deg, var(--bg) 0%, var(--bg-accent) 100%);
+      color: var(--text);
+      font-family: "SUIT Variable", "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    }
+    .layout {
+      width: min(1460px, calc(100% - 28px));
+      margin: 14px auto 24px;
+      display: grid;
+      grid-template-columns: 420px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .panel {
+      background: linear-gradient(180deg, #fff 0%, #fbfefd 100%);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+    .panel-head {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(90deg, #f6fbf9 0%, #f9fcfb 100%);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .panel-title {
+      font-size: 14px;
+      font-weight: 750;
+      letter-spacing: 0.01em;
+    }
+    .pill-row { display: flex; gap: 6px; flex-wrap: wrap; }
+    .pill {
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: #32525a;
+    }
+
+    .left { display: flex; flex-direction: column; }
+    .chat {
+      padding: 14px;
+      overflow: auto;
+      max-height: 360px;
+      border-bottom: 1px solid var(--line);
+      background:
+        linear-gradient(180deg, #f8fbfa 0%, #f5faf8 60%, #f9fcfb 100%);
+    }
+    .bubble {
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      border-radius: 14px;
+      max-width: 96%;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      border: 1px solid transparent;
+      font-size: 13px;
+    }
+    .user {
+      background: linear-gradient(180deg, #e8f6f1 0%, #d9f0e8 100%);
+      border-color: #b8ddd0;
+      margin-left: auto;
+    }
+    .bot {
+      background: #fff;
+      border-color: var(--line);
+    }
+    .controls { padding: 14px; display: grid; gap: 9px; }
+    textarea, select, button, input[type="text"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 11px;
+      font-size: 14px;
+      background: #fff;
+      color: var(--text);
+      transition: border-color .18s ease, box-shadow .18s ease, transform .12s ease;
+    }
+    textarea:focus, select:focus, button:focus {
+      outline: none;
+      border-color: var(--line-strong);
+      box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.14);
+    }
+    textarea { min-height: 80px; resize: vertical; }
+    #batchJson { min-height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    button {
+      background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      box-shadow: 0 8px 18px rgba(10, 82, 76, 0.22);
+    }
+    button:hover { transform: translateY(-1px); }
+    button:disabled {
+      background: #90a4ae;
+      cursor: wait;
+      box-shadow: none;
+    }
+    .manual-grid { display: grid; gap: 8px; }
+    .hidden { display: none; }
+
+    .right { display: block; padding: 12px; overflow: visible; }
+    .box {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      background: #fff;
+      overflow: auto;
+      box-shadow: 0 8px 24px rgba(7, 37, 35, 0.06);
+    }
+    .right .box { margin-bottom: 14px; }
+
+    .matrix-wrap { display: grid; grid-template-columns: 1fr 340px; gap: 10px; height: 100%; }
+    table.matrix {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 13px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+    .matrix th, .matrix td { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); padding: 8px; text-align: center; }
+    .matrix tr:last-child td, .matrix tr:last-child th { border-bottom: none; }
+    .matrix th:last-child, .matrix td:last-child { border-right: none; }
+    .matrix th {
+      background: linear-gradient(180deg, #f2f7f5 0%, #eaf3f0 100%);
+      font-weight: 700;
+    }
+    .matrix td.cell { cursor: pointer; }
+    .matrix td.cell:hover { background: #e9f5f1; }
+    .cell-badge { display:inline-block; margin-left:4px; font-size:11px; color:#8b1e3f; }
+
+    .detail { font-size: 13px; line-height: 1.45; }
+    .detail h4 { margin: 0 0 8px; font-size: 14px; letter-spacing: 0.01em; }
+    .muted { color: var(--muted); font-size: 12px; }
+
+    .viz-controls {
+      display:grid;
+      grid-template-columns: repeat(6, minmax(120px, 1fr));
+      gap:8px;
+      margin-bottom:10px;
+      padding: 10px;
+      border-radius: 12px;
+      background: var(--soft);
+      border: 1px solid var(--line);
+    }
+    .viz-controls label { font-size:12px; color:var(--muted); display:grid; gap:4px; }
+    .checkline { display:flex; gap:10px; align-items:center; font-size:12px; color:var(--muted); }
+
+    canvas { width: 100%; border: 1px solid var(--line); border-radius: 12px; display: block; background: linear-gradient(180deg, #fdfffe 0%, #f7fbf9 100%); }
+    #scatter { height: 420px; cursor: crosshair; }
+
+    .inspector {
+      margin-top: 10px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      font-size: 13px;
+      background: #fbfefd;
+    }
+    .inspector h4 { margin: 0 0 6px; font-size: 14px; }
+
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 11px;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fcfb 100%);
+      box-shadow: 0 6px 14px rgba(7, 37, 35, 0.05);
+    }
+    .card h4 { margin: 0 0 8px; font-size: 14px; }
+    .row { margin-bottom: 6px; }
+    .conf-btn {
+      width: 100%;
+      text-align: left;
+      margin-bottom: 6px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #f6fbf9;
+      color: var(--text);
+      box-shadow: none;
+      font-weight: 600;
+      padding: 8px 10px;
+    }
+    .conf-btn:hover { background: #eaf6f2; transform: none; }
+
+    .tooltip {
+      position: fixed;
+      pointer-events: none;
+      background: rgba(8, 21, 29, 0.93);
+      color: #fff;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      max-width: 360px;
+      z-index: 50;
+      display: none;
+      line-height: 1.35;
+      white-space: pre-wrap;
+    }
+
+    @media (max-width: 1200px) {
+      .layout { grid-template-columns: 1fr; width: calc(100% - 20px); margin: 10px auto 18px; }
+      .matrix-wrap { grid-template-columns: 1fr; }
+      #scatter { height: 320px; }
+      .left { position: static; }
+      .viz-controls { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+    }
+
+    @media (min-width: 1201px) {
+      .left { position: sticky; top: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <section class="panel left">
+      <div class="panel-head">
+        <div class="panel-title">Multi-LLM Chat Console</div>
+        <div class="pill-row">
+          <span class="pill">gpt-4o</span>
+          <span class="pill">gpt-4.1</span>
+          <span class="pill">gpt-4.1-mini</span>
+        </div>
+      </div>
+      <div id="chat" class="chat"></div>
+      <div class="controls">
+        <label>모드</label>
+        <select id="mode">
+          <option value="gpt">GPT 3모델 자동 수집</option>
+          <option value="manual">수동 입력(질문 1개, 3모델)</option>
+          <option value="manual-batch">수동 입력(여러 질문 배치)</option>
+        </select>
+
+        <div id="manualInputs" class="manual-grid hidden">
+          <textarea id="m1" placeholder="모델 1 응답"></textarea>
+          <textarea id="m2" placeholder="모델 2 응답"></textarea>
+          <textarea id="m3" placeholder="모델 3 응답"></textarea>
+        </div>
+
+        <div id="batchInputs" class="hidden">
+          <textarea id="batchJson"></textarea>
+        </div>
+
+        <label style="display:flex;gap:8px;align-items:center;">
+          <input type="checkbox" id="useNli" checked />
+          NLI 기반 상충 탐지 사용(기본 ON)
+        </label>
+
+        <textarea id="question" placeholder="질문을 입력하세요."></textarea>
+        <button id="send">분석 실행</button>
+      </div>
+    </section>
+
+    <section class="panel right">
+      <div class="panel-head">
+        <div class="panel-title">Perspective Map & Diagnostics</div>
+        <div class="pill-row">
+          <span class="pill">Topic×Stance</span>
+          <span class="pill">Scatter</span>
+          <span class="pill">Conflicts</span>
+        </div>
+      </div>
+      <div class="box">
+        <div class="matrix-wrap">
+          <div id="matrixHost"></div>
+          <div id="detailHost" class="detail">
+            <h4>Bucket Detail</h4>
+            <div class="muted">셀을 클릭하면 상세가 표시됩니다.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="viz-controls">
+          <label>Model
+            <select id="filterModel" multiple size="4"></select>
+          </label>
+          <label>Topic
+            <select id="filterTopic"><option value="">All</option></select>
+          </label>
+          <label>Stance
+            <select id="filterStance"><option value="">All</option><option>POSITIVE</option><option>NEGATIVE</option><option>CONDITIONAL</option><option>META</option></select>
+          </label>
+          <label class="checkline"><input type="checkbox" id="showCommon" /> only common</label>
+          <label class="checkline"><input type="checkbox" id="showUnique" /> only unique</label>
+          <label class="checkline"><input type="checkbox" id="showConfEdges" checked /> conflict edges</label>
+        </div>
+        <canvas id="scatter" width="900" height="280"></canvas>
+        <div class="muted">색=Topic, 모양=Stance, 테두리=Model, 선=Conflict</div>
+        <div id="claimInspector" class="inspector">
+          <h4>Claim Inspector</h4>
+          <div class="muted">산점도 점을 클릭하면 원문 claim 상세가 표시됩니다.</div>
+        </div>
+      </div>
+
+      <div id="cards" class="box cards"></div>
+    </section>
+  </div>
+
+  <div id="tooltip" class="tooltip"></div>
+
+  <script>
+    const chat = document.getElementById('chat');
+    const cards = document.getElementById('cards');
+    const mode = document.getElementById('mode');
+    const manualInputs = document.getElementById('manualInputs');
+    const batchInputs = document.getElementById('batchInputs');
+    const sendBtn = document.getElementById('send');
+    const question = document.getElementById('question');
+    const batchJson = document.getElementById('batchJson');
+    const useNli = document.getElementById('useNli');
+
+    const matrixHost = document.getElementById('matrixHost');
+    const detailHost = document.getElementById('detailHost');
+    const scatter = document.getElementById('scatter');
+    const sctx = scatter.getContext('2d');
+    const tooltip = document.getElementById('tooltip');
+    const claimInspector = document.getElementById('claimInspector');
+
+    const filterModel = document.getElementById('filterModel');
+    const filterTopic = document.getElementById('filterTopic');
+    const filterStance = document.getElementById('filterStance');
+    const showCommon = document.getElementById('showCommon');
+    const showUnique = document.getElementById('showUnique');
+    const showConfEdges = document.getElementById('showConfEdges');
+
+    let latestResult = null;
+    let pointRenderCache = [];
+    let edgeRenderCache = [];
+    let selectedClaimId = null;
+
+    const batchTemplate = {
+      batch_items: [{
+        question: '초기 스타트업은 기본적으로 원격근무를 채택해야 할까?',
+        manual_responses: [
+          { model: 'gpt-4o', text: '' },
+          { model: 'gpt-4.1', text: '' },
+          { model: 'gpt-4.1-mini', text: '' }
+        ]
+      }]
+    };
+    batchJson.value = JSON.stringify(batchTemplate, null, 2);
+
+    mode.addEventListener('change', () => {
+      const isManual = mode.value === 'manual';
+      const isBatch = mode.value === 'manual-batch';
+      manualInputs.classList.toggle('hidden', !isManual);
+      batchInputs.classList.toggle('hidden', !isBatch);
+      question.classList.toggle('hidden', isBatch);
+    });
+
+    [filterModel, filterTopic, filterStance, showCommon, showUnique, showConfEdges].forEach(el => {
+      el.addEventListener('change', () => {
+        if (!latestResult) return;
+        renderMatrix(latestResult);
+        renderScatter(latestResult);
+      });
+    });
+
+    function selectedModels() {
+      return [...filterModel.selectedOptions].map(o => o.value).filter(Boolean);
+    }
+
+    function addBubble(text, kind='bot') {
+      const div = document.createElement('div');
+      div.className = `bubble ${kind}`;
+      div.textContent = text;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function summarize(result) {
+      const s = result.stats;
+      const pros = (result.summary_common_pros || result.common_pros || []).slice(0,3);
+      const cons = (result.summary_common_cons || result.common_cons || []).slice(0,3);
+      const conf = (result.conflicts || []).slice(0,3).map(c =>
+        `[topic=${c.topic_label} score=${c.score} mode=${c.score_mode || 'SIM'}] (${c.model_a}) "${truncate(c.claim_a, 120)}" vs (${c.model_b}) "${truncate(c.claim_b, 120)}"`
+      );
+      const uniq = (result.unique_highlights || []).slice(0,3).map(u => `(${u.model}/${u.topic}) ${truncate(u.text, 72)}`);
+      return [
+        `[요약] claims=${s.claim_count}, topics=${s.topic_count}, pairs=${s.candidate_pairs_count || 0}, conflicts=${s.conflict_count}, weak=${s.weak_conflict_count}`,
+        `NLI: requested=${s.nli_requested ? 'on' : 'off'}, effective=${s.nli_effective ? 'on' : 'off'}, reason=${s.nli_reason || '-'}`,
+        `Common Pros(3): ${pros.map(x => x.representative).join(' | ') || '(none)'}`,
+        `Common Cons(3): ${cons.map(x => x.representative).join(' | ') || '(none)'}`,
+        `Conflicts(3): ${conf.join(' | ') || '(none)'}`,
+        `Unique Highlights(3): ${uniq.join(' | ') || '(none)'}`,
+      ].join('\n');
+    }
+
+    function syncCanvasSize() {
+      const rect = scatter.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const w = Math.max(320, Math.floor(rect.width));
+      const h = Math.max(220, Math.floor(rect.height));
+      scatter.width = Math.floor(w * dpr);
+      scatter.height = Math.floor(h * dpr);
+      sctx.setTransform(1, 0, 0, 1, 0, 0);
+      sctx.scale(dpr, dpr);
+      return { w, h };
+    }
+
+    function parseBatchJson() {
+      const raw = (batchJson.value || '').trim();
+      if (!raw) throw new Error('batch JSON이 비어 있습니다.');
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (_) {
+        throw new Error('batch JSON 파싱 실패: JSON 형식을 확인해 주세요.');
+      }
+      if (!parsed.batch_items || !Array.isArray(parsed.batch_items)) {
+        throw new Error('batch_items 배열이 필요합니다.');
+      }
+      return parsed.batch_items;
+    }
+
+    function buildClaimIndex(result) {
+      const map = new Map();
+      (result.claims || []).forEach(c => map.set(c.id, c));
+      return map;
+    }
+
+    function truncate(txt, n=120) {
+      if (!txt) return '';
+      return txt.length > n ? `${txt.slice(0, n)}...` : txt;
+    }
+
+    function getCommonUniqueSets(result) {
+      const common = new Set();
+      const unique = new Set();
+      (result.buckets || []).forEach(b => {
+        (b.claim_ids || []).forEach(id => (b.is_common ? common : unique).add(id));
+      });
+      return { common, unique };
+    }
+
+    function claimPassesFilter(c, commonSet, uniqueSet) {
+      if (!c) return false;
+      const ms = selectedModels();
+      if (ms.length && !ms.includes(c.model)) return false;
+      if (filterTopic.value && !(c.topic_labels || []).includes(filterTopic.value)) return false;
+      if (filterStance.value && c.stance !== filterStance.value) return false;
+      if (showCommon.checked && !commonSet.has(c.id)) return false;
+      if (showUnique.checked && !uniqueSet.has(c.id)) return false;
+      return true;
+    }
+
+    function populateFilters(result) {
+      const claims = result.claims || [];
+      const models = [...new Set(claims.map(c => c.model))].sort();
+      const topics = [...new Set((result.topics_axis || []).concat(...claims.map(c => c.topic_labels || [])))].sort();
+      filterModel.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+      filterTopic.innerHTML = `<option value="">All</option>` + topics.map(t => `<option value="${t}">${t}</option>`).join('');
+    }
+
+    function renderMatrix(result) {
+      const topics = result.topics_axis || [];
+      const stances = result.stances || ['POSITIVE', 'NEGATIVE', 'CONDITIONAL'];
+      const claimMap = buildClaimIndex(result);
+      const { common, unique } = getCommonUniqueSets(result);
+
+      const bucketMap = new Map();
+      (result.buckets || []).forEach(b => bucketMap.set(`${b.topic}::${b.stance}`, b));
+
+      let html = `<table class="matrix"><thead><tr><th>Topic \\ Stance</th>${stances.map(s => `<th>${s}</th>`).join('')}</tr></thead><tbody>`;
+      topics.forEach(topic => {
+        html += `<tr><th>${topic}</th>`;
+        stances.forEach(stance => {
+          const b = bucketMap.get(`${topic}::${stance}`);
+          let val = 0, conf = 0;
+          if (b) {
+            const ids = (b.claim_ids || []).filter(id => claimPassesFilter(claimMap.get(id), common, unique));
+            const ms = new Set(ids.map(id => claimMap.get(id)?.model).filter(Boolean));
+            val = ms.size;
+            conf = b.conflict_count || 0;
+          }
+          html += `<td class="${b ? 'cell' : ''}" data-topic="${topic}" data-stance="${stance}">${val}${conf>0?`<span class="cell-badge">⚠${conf}</span>`:''}</td>`;
+        });
+        html += `</tr>`;
+      });
+      html += `</tbody></table>`;
+      matrixHost.innerHTML = html;
+
+      matrixHost.querySelectorAll('td.cell').forEach(td => {
+        td.addEventListener('click', () => {
+          const topic = td.dataset.topic;
+          const stance = td.dataset.stance;
+          const b = bucketMap.get(`${topic}::${stance}`);
+          if (!b) return;
+          const reps = (b.representative_claims || []).slice(0,3).map(r => `- [${r.model}] ${r.text}`).join('<br/>') || '(none)';
+          detailHost.innerHTML = `
+            <h4>${topic} × ${stance}</h4>
+            <div class="muted">${b.is_common ? 'Common' : 'Unique'} | distinct_models=${(b.distinct_models || []).length}</div>
+            <div>models: ${(b.distinct_models || []).join(', ') || '(none)'}</div>
+            <div>conflicts: ${b.conflict_count || 0}</div>
+            <hr/>
+            <div>${reps}</div>
+          `;
+        });
+      });
+    }
+
+    function stanceShape(ctx, stance, x, y, r) {
+      if (stance === 'NEGATIVE') {
+        ctx.fillRect(x-r, y-r, r*2, r*2);
+      } else if (stance === 'CONDITIONAL') {
+        ctx.beginPath();
+        ctx.moveTo(x, y-r-1);
+        ctx.lineTo(x+r+1, y+r+1);
+        ctx.lineTo(x-r-1, y+r+1);
+        ctx.closePath();
+        ctx.fill();
+      } else if (stance === 'META') {
+        ctx.beginPath();
+        ctx.moveTo(x, y-r-1); ctx.lineTo(x+r+1, y); ctx.lineTo(x, y+r+1); ctx.lineTo(x-r-1, y); ctx.closePath();
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+
+    function distToSegment(px, py, x1, y1, x2, y2) {
+      const dx = x2 - x1, dy = y2 - y1;
+      if (dx === 0 && dy === 0) return Math.hypot(px - x1, py - y1);
+      const t = Math.max(0, Math.min(1, ((px-x1)*dx + (py-y1)*dy)/(dx*dx+dy*dy)));
+      const x = x1 + t * dx, y = y1 + t * dy;
+      return Math.hypot(px - x, py - y);
+    }
+
+    function renderScatter(result) {
+      const { w, h } = syncCanvasSize();
+      sctx.clearRect(0, 0, w, h);
+      const claims = result.claims || [];
+      const claimMap = buildClaimIndex(result);
+      const { common, unique } = getCommonUniqueSets(result);
+      const topicList = [...new Set(claims.flatMap(c => c.topic_labels || []))];
+      const modelList = [...new Set(claims.map(c => c.model))];
+
+      const topicColor = new Map();
+      const palette = ['#006d77','#9c6644','#5f0f40','#3a5a40','#6a4c93','#bc6c25','#0a9396','#ae2012'];
+      topicList.forEach((t, i) => topicColor.set(t, palette[i % palette.length]));
+      const modelStroke = new Map();
+      const strokes = ['#111827','#334155','#7c2d12','#1d4ed8','#14532d'];
+      modelList.forEach((m, i) => modelStroke.set(m, strokes[i % strokes.length]));
+
+      const pad = 22;
+      sctx.strokeStyle = '#d8d4c8';
+      sctx.strokeRect(pad, pad, w - pad*2, h - pad*2);
+
+      const visible = claims.filter(c => claimPassesFilter(c, common, unique));
+      const visSet = new Set(visible.map(c => c.id));
+      pointRenderCache = [];
+      edgeRenderCache = [];
+
+      if (showConfEdges.checked) {
+        (result.visual_conflicts || []).forEach(e => {
+          if (!visSet.has(e.claim_id_a) || !visSet.has(e.claim_id_b)) return;
+          const a = claimMap.get(e.claim_id_a), b = claimMap.get(e.claim_id_b);
+          if (!a || !b) return;
+          const ax = pad + a.emb2d[0] * (w - pad*2);
+          const ay = pad + (1-a.emb2d[1]) * (h - pad*2);
+          const bx = pad + b.emb2d[0] * (w - pad*2);
+          const by = pad + (1-b.emb2d[1]) * (h - pad*2);
+          sctx.strokeStyle = e.score >= 0.55 ? '#c1121f' : '#d97706';
+          sctx.lineWidth = 1.2;
+          sctx.beginPath(); sctx.moveTo(ax, ay); sctx.lineTo(bx, by); sctx.stroke();
+          edgeRenderCache.push({ax, ay, bx, by, edge: e});
+        });
+      }
+
+      const selected = selectedClaimId ? claimMap.get(selectedClaimId) : null;
+      const selectedCluster = selected ? selected.cluster_id : null;
+
+      visible.forEach(c => {
+        const x = pad + c.emb2d[0] * (w - pad*2);
+        const y = pad + (1-c.emb2d[1]) * (h - pad*2);
+        const topic = (c.topic_labels || ['META'])[0];
+        const isSel = selectedClaimId && c.id === selectedClaimId;
+        const sameCluster = selectedCluster && c.cluster_id === selectedCluster;
+        sctx.fillStyle = topicColor.get(topic) || '#64748b';
+        sctx.globalAlpha = isSel ? 1.0 : (sameCluster ? 0.95 : 0.78);
+        stanceShape(sctx, c.stance, x, y, 5);
+        sctx.strokeStyle = modelStroke.get(c.model) || '#111827';
+        sctx.lineWidth = isSel ? 2.3 : (sameCluster ? 1.8 : 1.2);
+        sctx.strokeRect(x-6, y-6, 12, 12);
+        sctx.globalAlpha = 1.0;
+        pointRenderCache.push({x, y, claim: c});
+      });
+    }
+
+    function showTooltip(px, py, claim) {
+      tooltip.textContent = `#${claim.display_id || claim.id}\n${claim.model} | ${(claim.topic_labels||[])[0] || claim.primary_topic || 'META'} | ${claim.stance}\n${truncate(claim.text, 120)}`;
+      tooltip.style.left = `${px + 14}px`;
+      tooltip.style.top = `${py + 14}px`;
+      tooltip.style.display = 'block';
+    }
+
+    function hideTooltip() { tooltip.style.display = 'none'; }
+
+    function renderInspectorClaim(result, claim) {
+      const clusters = result.clusters || [];
+      const claimMap = buildClaimIndex(result);
+      const cluster = clusters.find(c => c.cluster_id === claim.cluster_id);
+      const members = (cluster?.member_claim_ids || []).map(id => claimMap.get(id)).filter(Boolean).slice(0, 20);
+      const run = (result.runs || []).find(r => r.run_id === claim.source?.run_id);
+      const raw = run?.raw_response || '';
+      const rawShort = truncate(raw, 1200);
+
+      const byModel = {};
+      members.forEach(m => {
+        byModel[m.model] = byModel[m.model] || [];
+        byModel[m.model].push(m);
+      });
+      const blocks = Object.entries(byModel).map(([m, arr]) => {
+        const rows = arr.map(x => `<div class="row">- #${x.display_id}: ${truncate(x.text, 180)}</div>`).join('');
+        return `<details open><summary>${m} (${arr.length})</summary>${rows}</details>`;
+      }).join('') || '<div class="muted">(none)</div>';
+
+      const pTopic = claim.primary_topic || (claim.topic_labels || ['META'])[0];
+      const pStance = claim.stance;
+
+      claimInspector.innerHTML = `
+        <h4>Selected Claim</h4>
+        <div><strong>#${claim.display_id}</strong></div>
+        <div>${claim.text}</div>
+        <div class="muted">model=${claim.model} | primary_topic=${pTopic} | topic_labels=${(claim.topic_labels||[]).join(', ')} | stance=${pStance} | cluster=${claim.cluster_id || '(none)'}</div>
+        <div class="muted">source: run=${claim.source?.run_id || '-'} sentence_index=${claim.source?.sentence_index ?? '-'}</div>
+        <hr/>
+        <div><strong>Same Cluster Members</strong></div>
+        ${blocks}
+        <hr/>
+        <button id="jumpBucketBtn">이 버킷 보기 (${pTopic} × ${pStance})</button>
+        <details>
+          <summary>원문 보기 (${claim.source?.run_id || '-'})</summary>
+          <div class="muted">model=${run?.model || claim.model} | sentence_index=${claim.source?.sentence_index ?? '-'}</div>
+          <pre style="white-space:pre-wrap; max-height:220px; overflow:auto;">${rawShort || '(raw response 없음)'}</pre>
+        </details>
+      `;
+
+      const btn = document.getElementById('jumpBucketBtn');
+      if (btn) {
+        btn.addEventListener('click', () => {
+          const cell = matrixHost.querySelector(`td.cell[data-topic="${pTopic}"][data-stance="${pStance}"]`);
+          if (cell) { cell.scrollIntoView({behavior:'smooth', block:'center'}); cell.click(); }
+        });
+      }
+    }
+
+    function renderInspectorEdge(edge) {
+      const strong = (latestResult?.conflicts || []).find(c =>
+        (`c_${String(c.claim_id_a).padStart(3,'0')}` === edge.claim_id_a && `c_${String(c.claim_id_b).padStart(3,'0')}` === edge.claim_id_b) ||
+        (`c_${String(c.claim_id_a).padStart(3,'0')}` === edge.claim_id_b && `c_${String(c.claim_id_b).padStart(3,'0')}` === edge.claim_id_a)
+      );
+      if (strong) {
+        renderInspectorConflictRecord(strong, false);
+        return;
+      }
+      claimInspector.innerHTML = `
+        <h4>Conflict Edge</h4>
+        <div class="muted">topics=${(edge.topics||[]).join(', ')} | score=${edge.score}</div>
+        <div class="muted">stance_pair=${(edge.stance_pair||[]).join(' vs ')}</div>
+        <div>A: ${edge.claim_id_a}</div>
+        <div>B: ${edge.claim_id_b}</div>
+      `;
+    }
+
+    function renderInspectorConflictRecord(c, weak=false) {
+      claimInspector.innerHTML = `
+        <h4>${weak ? 'Weak Conflict' : 'Conflict'}</h4>
+        <div class="muted">topic=${c.topic_label} | score=${c.score} | mode=${c.score_mode || 'SIM'}${c.nli_contradiction != null ? ` | nli_contradiction=${c.nli_contradiction}` : ''}</div>
+        <div class="muted">stance=${c.stance_a} vs ${c.stance_b}</div>
+        <hr/>
+        <div><strong>${c.model_a}</strong></div>
+        <div>${c.claim_a || '(none)'}</div>
+        <hr/>
+        <div><strong>${c.model_b}</strong></div>
+        <div>${c.claim_b || '(none)'}</div>
+      `;
+    }
+
+    function renderCards(result) {
+      const mk = arr => arr.length ? arr.map(v => `<div class="row">- ${v}</div>`).join('') : '<div class="muted">(none)</div>';
+      const topicSumm = (result.topics || []).slice(0,8).map(t => `${t.topic_label}: +${t.common_positive?.length||0} / -${t.common_negative?.length||0} / c${t.stats?.conflict_count||0}`);
+      const uniq = (result.unique_highlights || []).slice(0,6).map(u => `(${u.model}/${u.topic}) ${truncate(u.text, 88)}`);
+      const confRows = (result.conflicts || []).slice(0,6).map((c, i) =>
+        `<button class="conf-btn" data-kind="strong" data-idx="${i}">[${c.topic_label} ${c.score} ${c.score_mode || 'SIM'}] ${c.model_a} vs ${c.model_b}</button>`
+      ).join('') || '<div class="muted">(none)</div>';
+      const weakRows = (result.weak_conflicts || []).slice(0,6).map((c, i) =>
+        `<button class="conf-btn" data-kind="weak" data-idx="${i}">[${c.topic_label} ${c.score} ${c.score_mode || 'SIM'}] ${c.model_a} vs ${c.model_b}</button>`
+      ).join('') || '<div class="muted">(none)</div>';
+      cards.innerHTML = `
+        <article class="card"><h4>Topic Summary</h4>${mk(topicSumm)}</article>
+        <article class="card"><h4>Conflicts</h4>${confRows}</article>
+        <article class="card"><h4>Weak Conflicts</h4>${weakRows}</article>
+        <article class="card"><h4>Unique Highlights</h4>${mk(uniq)}</article>
+      `;
+      cards.querySelectorAll('.conf-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const kind = btn.dataset.kind;
+          const idx = Number(btn.dataset.idx || '0');
+          const list = kind === 'weak' ? (result.weak_conflicts || []) : (result.conflicts || []);
+          const row = list[idx];
+          if (row) renderInspectorConflictRecord(row, kind === 'weak');
+        });
+      });
+    }
+
+    function applyVisuals(result) {
+      latestResult = result;
+      populateFilters(result);
+      renderMatrix(result);
+      renderScatter(result);
+      renderCards(result);
+    }
+
+    scatter.addEventListener('mousemove', (ev) => {
+      if (!latestResult) return;
+      const rect = scatter.getBoundingClientRect();
+      const x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+
+      let nearest = null, best = 1e9;
+      pointRenderCache.forEach(p => {
+        const d = Math.hypot(x - p.x, y - p.y);
+        if (d < best) { best = d; nearest = p; }
+      });
+
+      if (nearest && best <= 12) showTooltip(ev.clientX, ev.clientY, nearest.claim);
+      else hideTooltip();
+    });
+
+    scatter.addEventListener('mouseleave', hideTooltip);
+
+    scatter.addEventListener('click', (ev) => {
+      if (!latestResult) return;
+      const rect = scatter.getBoundingClientRect();
+      const x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+
+      let nearest = null, best = 1e9;
+      pointRenderCache.forEach(p => {
+        const d = Math.hypot(x - p.x, y - p.y);
+        if (d < best) { best = d; nearest = p; }
+      });
+      if (nearest && best <= 14) {
+        selectedClaimId = nearest.claim.id;
+        renderScatter(latestResult);
+        renderInspectorClaim(latestResult, nearest.claim);
+        return;
+      }
+
+      let edgeHit = null, edgeDist = 1e9;
+      edgeRenderCache.forEach(e => {
+        const d = distToSegment(x, y, e.ax, e.ay, e.bx, e.by);
+        if (d < edgeDist) { edgeDist = d; edgeHit = e; }
+      });
+      if (edgeHit && edgeDist <= 8) renderInspectorEdge(edgeHit.edge);
+    });
+
+    window.addEventListener('resize', () => {
+      if (!latestResult) return;
+      renderScatter(latestResult);
+    });
+
+    async function run() {
+      sendBtn.disabled = true;
+      addBubble('분석 중...');
+
+      try {
+        const payload = { mode: mode.value, use_nli: !!useNli.checked };
+        if (mode.value === 'manual-batch') {
+          payload.batch_items = parseBatchJson();
+          addBubble(`배치 분석 요청: ${payload.batch_items.length}개 질문`, 'user');
+        } else {
+          const q = question.value.trim();
+          if (!q) throw new Error('질문을 입력해 주세요.');
+          payload.question = q;
+          addBubble(q, 'user');
+          if (mode.value === 'manual') {
+            payload.manual_responses = [
+              { model: 'gpt-4o', text: document.getElementById('m1').value.trim() },
+              { model: 'gpt-4.1', text: document.getElementById('m2').value.trim() },
+              { model: 'gpt-4.1-mini', text: document.getElementById('m3').value.trim() },
+            ];
+          }
+        }
+
+        const res = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'analysis failed');
+
+        if (data.batch) {
+          const first = data.results[0];
+          chat.lastChild.textContent = `[배치 결과] ${data.count}개 질문 분석 완료`;
+          if (first) { selectedClaimId = null; applyVisuals(first); }
+        } else {
+          chat.lastChild.textContent = summarize(data.result);
+          if (data.result?.stats?.nli_requested && !data.result?.stats?.nli_effective) {
+            addBubble(`참고: NLI fallback 활성화 (backend=${data.result?.stats?.nli_backend || 'local_transformers'}, reason=${data.result?.stats?.nli_reason || 'unknown'}) -> similarity-only mode`);
+          }
+          selectedClaimId = null;
+          applyVisuals(data.result);
+        }
+      } catch (e) {
+        chat.lastChild.textContent = `오류: ${e.message}`;
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    sendBtn.addEventListener('click', run);
+  </script>
+</body>
+</html>

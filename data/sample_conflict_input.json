@@ -1,0 +1,17 @@
+{
+  "question": "Should teams always ship daily releases?",
+  "responses": [
+    {
+      "model": "model-a",
+      "text": "Teams should release daily because small batches reduce deployment risk. Daily shipping improves feedback speed."
+    },
+    {
+      "model": "model-b",
+      "text": "Teams should not release daily by default. Daily release cadence can increase operational risk when tests are weak."
+    },
+    {
+      "model": "model-c",
+      "text": "A daily release rhythm works only with strong CI. Without automation, releasing every day is not recommended."
+    }
+  ]
+}
