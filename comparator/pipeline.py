@@ -220,6 +220,9 @@ def _pick_unique_highlights(
                         "text": text,
                         "score": round(score, 3),
                         "max_common_similarity": round(max_common_sim, 3),
+                        "supporting_models": [model],
+                        "supporting_count": 1,
+                        "tag": "UNIQUE",
                     }
                 )
                 seen_texts.add(text)
@@ -279,6 +282,11 @@ def run_pipeline(
 ) -> Dict[str, Any]:
     question = payload.get("question", "")
     responses = payload.get("responses", [])
+    model_order = []
+    for r in responses:
+        m = str(r.get("model", "unknown"))
+        if m not in model_order:
+            model_order.append(m)
 
     raw_claims: List[Dict[str, Any]] = []
     for ridx, resp in enumerate(responses):
@@ -390,6 +398,7 @@ def run_pipeline(
                 "claim_b": b.text,
                 "score": round(score, 3),
                 "score_mode": score_payload["mode"],
+                "mode": score_payload["mode"],
                 "nli_contradiction": (
                     round(float(score_payload["nli_contradiction"]), 3)
                     if score_payload.get("nli_contradiction") is not None
@@ -447,6 +456,9 @@ def run_pipeline(
                                 "representative": rep["text"],
                                 "model": rep["model"],
                                 "models": item["models"],
+                                "supporting_models": item["models"],
+                                "supporting_count": len(item["models"]),
+                                "tag": "COMMON",
                             }
                         )
                 elif stance == "NEGATIVE":
@@ -458,6 +470,9 @@ def run_pipeline(
                                 "representative": rep["text"],
                                 "model": rep["model"],
                                 "models": item["models"],
+                                "supporting_models": item["models"],
+                                "supporting_count": len(item["models"]),
+                                "tag": "COMMON",
                             }
                         )
                 elif stance == "CONDITIONAL":
@@ -590,6 +605,22 @@ def run_pipeline(
     summary_common_pros = _select_topic_diverse(common_pros_compat, k=summary_top_k)
     summary_common_cons = _select_topic_diverse(common_cons_compat, k=summary_top_k)
 
+    # Claim-level provenance/support tags based on primary (topic, stance) bucket.
+    primary_bucket_models: Dict[Tuple[str, str], List[str]] = {}
+    for (topic, stance), members in bucket_map.items():
+        distinct = sorted(set(m.model for m in members), key=lambda x: model_order.index(x) if x in model_order else 10_000)
+        primary_bucket_models[(topic, stance)] = distinct
+
+    claim_conflict_meta: Dict[int, Dict[str, Any]] = {}
+    for cf in global_conflicts:
+        for cid in (cf["claim_id_a"], cf["claim_id_b"]):
+            prev = claim_conflict_meta.get(cid)
+            if prev is None or float(cf["score"]) > float(prev["score"]):
+                claim_conflict_meta[cid] = {
+                    "score": float(cf["score"]),
+                    "mode": cf.get("score_mode", "SIM"),
+                }
+
     return {
         "question": question,
         "responses": responses,
@@ -607,6 +638,35 @@ def run_pipeline(
                 "stance": c.stance_label,
                 "cluster_id": f"k_{(c.plot_cluster_id if c.plot_cluster_id >= 0 else c.id)}",
                 "emb2d": [p["x"], p["y"]],
+                "supporting_models": primary_bucket_models.get(
+                    ((c.topic_labels[0] if c.topic_labels else "META"), c.stance_label),
+                    [c.model],
+                ),
+                "supporting_count": len(
+                    primary_bucket_models.get(
+                        ((c.topic_labels[0] if c.topic_labels else "META"), c.stance_label),
+                        [c.model],
+                    )
+                ),
+                "tag": (
+                    "COMMON"
+                    if len(
+                        primary_bucket_models.get(
+                            ((c.topic_labels[0] if c.topic_labels else "META"), c.stance_label),
+                            [c.model],
+                        )
+                    ) >= 2
+                    else "UNIQUE"
+                ),
+                "conflict_badge": (
+                    {
+                        "is_conflict": True,
+                        "score": round(claim_conflict_meta[c.id]["score"], 3),
+                        "mode": claim_conflict_meta[c.id]["mode"],
+                    }
+                    if c.id in claim_conflict_meta
+                    else {"is_conflict": False}
+                ),
                 "source": {"run_id": f"r_{c.response_idx+1:02d}", "sentence_index": c.sentence_index},
             }
             for c, p in zip(claims, claim_points)

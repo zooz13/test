@@ -203,6 +203,21 @@
     }
     .card h4 { margin: 0 0 8px; font-size: 14px; }
     .row { margin-bottom: 6px; }
+    .claim-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .claim-badges { margin-left: auto; display: inline-flex; gap: 4px; flex-wrap: wrap; }
+    .claim-tag {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      padding: 2px 6px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      vertical-align: middle;
+    }
+    .tag-common { color: #0f5132; background: #dff7e7; border-color: #9fdbb3; }
+    .tag-unique { color: #0f3e8a; background: #dbeafe; border-color: #9ec5fe; }
+    .tag-conflict { color: #7f1d1d; background: #fee2e2; border-color: #fca5a5; }
     .conf-btn {
       width: 100%;
       text-align: left;
@@ -395,10 +410,71 @@
       return [...filterModel.selectedOptions].map(o => o.value).filter(Boolean);
     }
 
-    function addBubble(text, kind='bot') {
+    function esc(s) {
+      return String(s || '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function modelShort(model) {
+      if (model === 'gpt-4o') return '4o';
+      if (model === 'gpt-4.1') return '4.1';
+      if (model === 'gpt-4.1-mini') return '4.1m';
+      return model.replace(/^gpt-?/i, '').slice(0, 6) || model;
+    }
+
+    function modelOrderMap() {
+      const order = new Map();
+      (latestResult?.runs || []).forEach((r, i) => order.set(r.model, i));
+      return order;
+    }
+
+    function orderedModels(models) {
+      const arr = [...new Set(models || [])];
+      const order = modelOrderMap();
+      arr.sort((a, b) => (order.get(a) ?? 999) - (order.get(b) ?? 999) || a.localeCompare(b));
+      return arr;
+    }
+
+    function renderModelBadges(models) {
+      return orderedModels(models).map(m =>
+        `<span class="pill" title="${esc(m)}">[${esc(modelShort(m))}]</span>`
+      ).join(' ');
+    }
+
+    function renderClaimTag(claim) {
+      const tag = claim?.tag || ((claim?.supporting_count || 1) >= 2 ? 'COMMON' : 'UNIQUE');
+      const cls = tag === 'COMMON' ? 'tag-common' : 'tag-unique';
+      return `<span class="claim-tag ${cls}">${tag}</span>`;
+    }
+
+    function renderConflictBadge(claim) {
+      const c = claim?.conflict_badge;
+      if (!c || !c.is_conflict) return '';
+      return `<span class="claim-tag tag-conflict">CONFLICT ${esc(c.mode || 'SIM')} ${esc(c.score)}</span>`;
+    }
+
+    function renderClaimLine(claim, truncateLen=120) {
+      if (!claim) return '<div class="row muted">(claim 없음)</div>';
+      const text = truncate(claim.text, truncateLen);
+      const models = claim.supporting_models || [claim.model];
+      return `
+        <div class="row claim-line">
+          ${renderClaimTag(claim)} ${renderConflictBadge(claim)}
+          <span>${esc(text)}</span>
+          <span class="claim-badges">${renderModelBadges(models)}</span>
+        </div>
+      `;
+    }
+
+    function addBubble(text, kind='bot', asHtml=false) {
       const div = document.createElement('div');
       div.className = `bubble ${kind}`;
-      div.textContent = text;
+      if (asHtml) div.innerHTML = text;
+      else div.textContent = text;
       chat.appendChild(div);
       chat.scrollTop = chat.scrollHeight;
     }
@@ -407,18 +483,28 @@
       const s = result.stats;
       const pros = (result.summary_common_pros || result.common_pros || []).slice(0,3);
       const cons = (result.summary_common_cons || result.common_cons || []).slice(0,3);
-      const conf = (result.conflicts || []).slice(0,3).map(c =>
-        `[topic=${c.topic_label} score=${c.score} mode=${c.score_mode || 'SIM'}] (${c.model_a}) "${truncate(c.claim_a, 120)}" vs (${c.model_b}) "${truncate(c.claim_b, 120)}"`
-      );
-      const uniq = (result.unique_highlights || []).slice(0,3).map(u => `(${u.model}/${u.topic}) ${truncate(u.text, 72)}`);
-      return [
-        `[요약] claims=${s.claim_count}, topics=${s.topic_count}, pairs=${s.candidate_pairs_count || 0}, conflicts=${s.conflict_count}, weak=${s.weak_conflict_count}`,
-        `NLI: requested=${s.nli_requested ? 'on' : 'off'}, effective=${s.nli_effective ? 'on' : 'off'}, reason=${s.nli_reason || '-'}`,
-        `Common Pros(3): ${pros.map(x => x.representative).join(' | ') || '(none)'}`,
-        `Common Cons(3): ${cons.map(x => x.representative).join(' | ') || '(none)'}`,
-        `Conflicts(3): ${conf.join(' | ') || '(none)'}`,
-        `Unique Highlights(3): ${uniq.join(' | ') || '(none)'}`,
-      ].join('\n');
+      const conf = (result.conflicts || []).slice(0,3);
+      const uniq = (result.unique_highlights || []).slice(0,3);
+      const prosHtml = pros.map(p =>
+        `<div class="row">${renderClaimTag({tag:'COMMON', supporting_count:p.supporting_count})} ${esc(truncate(p.representative, 100))} <span class="claim-badges">${renderModelBadges(p.supporting_models || p.models || [])}</span></div>`
+      ).join('') || '<div class="row muted">(none)</div>';
+      const consHtml = cons.map(p =>
+        `<div class="row">${renderClaimTag({tag:'COMMON', supporting_count:p.supporting_count})} ${esc(truncate(p.representative, 100))} <span class="claim-badges">${renderModelBadges(p.supporting_models || p.models || [])}</span></div>`
+      ).join('') || '<div class="row muted">(none)</div>';
+      const confHtml = conf.map(c =>
+        `<div class="row">${renderConflictBadge({conflict_badge:{is_conflict:true,score:c.score,mode:c.score_mode || 'SIM'}})} [topic=${esc(c.topic_label)}] (${esc(c.model_a)}) "${esc(truncate(c.claim_a, 95))}" vs (${esc(c.model_b)}) "${esc(truncate(c.claim_b, 95))}"</div>`
+      ).join('') || '<div class="row muted">(none)</div>';
+      const uniqHtml = uniq.map(u =>
+        `<div class="row">${renderClaimTag({tag:'UNIQUE', supporting_count:1})} (${esc(u.model)}/${esc(u.topic)}) ${esc(truncate(u.text, 95))} <span class="claim-badges">${renderModelBadges(u.supporting_models || [u.model])}</span></div>`
+      ).join('') || '<div class="row muted">(none)</div>';
+      return `
+        <div class="row"><strong>[요약]</strong> claims=${s.claim_count}, topics=${s.topic_count}, pairs=${s.candidate_pairs_count || 0}, conflicts=${s.conflict_count}, weak=${s.weak_conflict_count}</div>
+        <div class="row muted">NLI: requested=${s.nli_requested ? 'on' : 'off'}, effective=${s.nli_effective ? 'on' : 'off'}, reason=${esc(s.nli_reason || '-')}</div>
+        <div class="row"><strong>Common Pros(3)</strong></div>${prosHtml}
+        <div class="row"><strong>Common Cons(3)</strong></div>${consHtml}
+        <div class="row"><strong>Conflicts(3)</strong></div>${confHtml}
+        <div class="row"><strong>Unique Highlights(3)</strong></div>${uniqHtml}
+      `;
     }
 
     function syncCanvasSize() {
@@ -521,7 +607,10 @@
           const stance = td.dataset.stance;
           const b = bucketMap.get(`${topic}::${stance}`);
           if (!b) return;
-          const reps = (b.representative_claims || []).slice(0,3).map(r => `- [${r.model}] ${r.text}`).join('<br/>') || '(none)';
+          const reps = (b.representative_claims || []).slice(0,3).map(r => {
+            const claim = claimMap.get(r.id) || { text: r.text, model: r.model, supporting_models: b.distinct_models, supporting_count: (b.distinct_models || []).length, tag: b.is_common ? 'COMMON' : 'UNIQUE' };
+            return renderClaimLine(claim, 140);
+          }).join('') || '<div class="muted">(none)</div>';
           detailHost.innerHTML = `
             <h4>${topic} × ${stance}</h4>
             <div class="muted">${b.is_common ? 'Common' : 'Unique'} | distinct_models=${(b.distinct_models || []).length}</div>
@@ -648,7 +737,7 @@
         byModel[m.model].push(m);
       });
       const blocks = Object.entries(byModel).map(([m, arr]) => {
-        const rows = arr.map(x => `<div class="row">- #${x.display_id}: ${truncate(x.text, 180)}</div>`).join('');
+        const rows = arr.map(x => `<div class="row">#${x.display_id} ${renderClaimLine(x, 180)}</div>`).join('');
         return `<details open><summary>${m} (${arr.length})</summary>${rows}</details>`;
       }).join('') || '<div class="muted">(none)</div>';
 
@@ -658,7 +747,7 @@
       claimInspector.innerHTML = `
         <h4>Selected Claim</h4>
         <div><strong>#${claim.display_id}</strong></div>
-        <div>${claim.text}</div>
+        <div>${renderClaimLine(claim, 999)}</div>
         <div class="muted">model=${claim.model} | primary_topic=${pTopic} | topic_labels=${(claim.topic_labels||[]).join(', ')} | stance=${pStance} | cluster=${claim.cluster_id || '(none)'}</div>
         <div class="muted">source: run=${claim.source?.run_id || '-'} sentence_index=${claim.source?.sentence_index ?? '-'}</div>
         <hr/>
@@ -701,28 +790,49 @@
     }
 
     function renderInspectorConflictRecord(c, weak=false) {
+      const claimMap = buildClaimIndex(latestResult || {});
+      const aId = `c_${String(c.claim_id_a).padStart(3, '0')}`;
+      const bId = `c_${String(c.claim_id_b).padStart(3, '0')}`;
+      const aClaim = claimMap.get(aId) || {
+        text: c.claim_a,
+        model: c.model_a,
+        supporting_models: [c.model_a],
+        supporting_count: 1,
+        tag: 'UNIQUE',
+        conflict_badge: { is_conflict: true, score: c.score, mode: c.score_mode || c.mode || 'SIM' },
+      };
+      const bClaim = claimMap.get(bId) || {
+        text: c.claim_b,
+        model: c.model_b,
+        supporting_models: [c.model_b],
+        supporting_count: 1,
+        tag: 'UNIQUE',
+        conflict_badge: { is_conflict: true, score: c.score, mode: c.score_mode || c.mode || 'SIM' },
+      };
       claimInspector.innerHTML = `
         <h4>${weak ? 'Weak Conflict' : 'Conflict'}</h4>
         <div class="muted">topic=${c.topic_label} | score=${c.score} | mode=${c.score_mode || 'SIM'}${c.nli_contradiction != null ? ` | nli_contradiction=${c.nli_contradiction}` : ''}</div>
         <div class="muted">stance=${c.stance_a} vs ${c.stance_b}</div>
         <hr/>
         <div><strong>${c.model_a}</strong></div>
-        <div>${c.claim_a || '(none)'}</div>
+        <div>${renderClaimLine(aClaim, 999)}</div>
         <hr/>
         <div><strong>${c.model_b}</strong></div>
-        <div>${c.claim_b || '(none)'}</div>
+        <div>${renderClaimLine(bClaim, 999)}</div>
       `;
     }
 
     function renderCards(result) {
       const mk = arr => arr.length ? arr.map(v => `<div class="row">- ${v}</div>`).join('') : '<div class="muted">(none)</div>';
       const topicSumm = (result.topics || []).slice(0,8).map(t => `${t.topic_label}: +${t.common_positive?.length||0} / -${t.common_negative?.length||0} / c${t.stats?.conflict_count||0}`);
-      const uniq = (result.unique_highlights || []).slice(0,6).map(u => `(${u.model}/${u.topic}) ${truncate(u.text, 88)}`);
+      const uniq = (result.unique_highlights || []).slice(0,6).map(u =>
+        `${renderClaimTag({tag:'UNIQUE', supporting_count:1})} (${esc(u.model)}/${esc(u.topic)}) ${esc(truncate(u.text, 88))} <span class="claim-badges">${renderModelBadges(u.supporting_models || [u.model])}</span>`
+      );
       const confRows = (result.conflicts || []).slice(0,6).map((c, i) =>
-        `<button class="conf-btn" data-kind="strong" data-idx="${i}">[${c.topic_label} ${c.score} ${c.score_mode || 'SIM'}] ${c.model_a} vs ${c.model_b}</button>`
+        `<button class="conf-btn" data-kind="strong" data-idx="${i}">${renderConflictBadge({conflict_badge:{is_conflict:true,score:c.score,mode:c.score_mode||'SIM'}})} [${esc(c.topic_label)}] ${esc(c.model_a)} vs ${esc(c.model_b)}</button>`
       ).join('') || '<div class="muted">(none)</div>';
       const weakRows = (result.weak_conflicts || []).slice(0,6).map((c, i) =>
-        `<button class="conf-btn" data-kind="weak" data-idx="${i}">[${c.topic_label} ${c.score} ${c.score_mode || 'SIM'}] ${c.model_a} vs ${c.model_b}</button>`
+        `<button class="conf-btn" data-kind="weak" data-idx="${i}">${renderConflictBadge({conflict_badge:{is_conflict:true,score:c.score,mode:c.score_mode||'SIM'}})} [${esc(c.topic_label)}] ${esc(c.model_a)} vs ${esc(c.model_b)}</button>`
       ).join('') || '<div class="muted">(none)</div>';
       cards.innerHTML = `
         <article class="card"><h4>Topic Summary</h4>${mk(topicSumm)}</article>
@@ -832,7 +942,7 @@
           chat.lastChild.textContent = `[배치 결과] ${data.count}개 질문 분석 완료`;
           if (first) { selectedClaimId = null; applyVisuals(first); }
         } else {
-          chat.lastChild.textContent = summarize(data.result);
+          chat.lastChild.innerHTML = summarize(data.result);
           if (data.result?.stats?.nli_requested && !data.result?.stats?.nli_effective) {
             addBubble(`참고: NLI fallback 활성화 (backend=${data.result?.stats?.nli_backend || 'local_transformers'}, reason=${data.result?.stats?.nli_reason || 'unknown'}) -> similarity-only mode`);
           }
