@@ -21,6 +21,11 @@ STANCE_CONFLICT_PAIRS = {
     ("CONDITIONAL", "NEGATIVE"),
 }
 
+SIM_CONFLICT_PAIRS = {
+    ("POSITIVE", "NEGATIVE"),
+    ("NEGATIVE", "POSITIVE"),
+}
+
 UNIQUE_META_PATTERNS = [
     "정리해", "결론부터", "말씀드리면", "요약", "핵심은", "체크리스트", "가이드",
     "in short", "summary", "conclusion",
@@ -134,6 +139,12 @@ def _cluster_topic_claims(topic_claims: List[Claim], threshold: float, merge_thr
 def _topic_overlap(a: Claim, b: Claim) -> List[str]:
     inter = sorted(set(a.topic_labels) & set(b.topic_labels))
     return inter
+
+
+def _is_conflict_noise_text(text: str) -> bool:
+    t = text.lower().strip()
+    noise_tokens = ["1️⃣", "2️⃣", "3️⃣", "pros", "cons", "정리", "결론부터", "체크리스트", "핵심 요약"]
+    return any(tok in t for tok in noise_tokens)
 
 
 def _is_meta_like_text(text: str) -> bool:
@@ -325,7 +336,7 @@ def run_pipeline(
     nli_requested = bool(nli_state["requested"])
     nli_effective = bool(nli_state["effective"])
     nli_reason = str(nli_state["reason"])
-    effective_conf_threshold = conflict_threshold if nli_effective else 0.5
+    effective_conf_threshold = conflict_threshold if nli_effective else 0.55
 
     print(
         f"[pipeline] NLI: {'ON' if nli_requested else 'OFF'} "
@@ -357,11 +368,19 @@ def run_pipeline(
                 continue
             if a.stance_label == "META" or b.stance_label == "META":
                 continue
-            if (a.stance_label, b.stance_label) not in STANCE_CONFLICT_PAIRS:
+            pair_set = STANCE_CONFLICT_PAIRS if nli_effective else SIM_CONFLICT_PAIRS
+            if (a.stance_label, b.stance_label) not in pair_set:
                 continue
             overlap = _topic_overlap(a, b)
             if not overlap:
                 continue
+            if not nli_effective:
+                a_primary = a.topic_labels[0] if a.topic_labels else "META"
+                b_primary = b.topic_labels[0] if b.topic_labels else "META"
+                if a_primary != b_primary:
+                    continue
+                if _is_conflict_noise_text(a.text) or _is_conflict_noise_text(b.text):
+                    continue
 
             key = (min(a.id, b.id), max(a.id, b.id))
             if key in pair_seen:
@@ -408,7 +427,7 @@ def run_pipeline(
 
             if score >= effective_conf_threshold:
                 global_conflicts.append(rec)
-            elif score >= 0.4:
+            elif score >= (0.4 if nli_effective else 0.5):
                 weak_conflicts.append(rec)
 
     global_conflicts.sort(key=lambda x: x["score"], reverse=True)

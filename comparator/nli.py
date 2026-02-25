@@ -1,6 +1,19 @@
 import os
+import traceback
 from functools import lru_cache
 from typing import Any, Dict, Optional, Tuple
+
+
+def _classify_load_error(exc: Exception) -> str:
+    msg = str(exc).lower()
+    et = type(exc).__name__
+    if "out of memory" in msg or "oom" in msg:
+        return f"oom:{et}"
+    if "not found" in msg or "404" in msg:
+        return f"download_error:{et}"
+    if "token" in msg and "hf" in msg:
+        return f"auth_error:{et}"
+    return f"model_load_error:{et}"
 
 
 @lru_cache(maxsize=1)
@@ -12,23 +25,35 @@ def _load_classifier(backend: str) -> Tuple[Optional[Any], str]:
     if backend != "local_transformers":
         return None, "unknown_backend"
 
+    model_name = os.getenv("NLI_MODEL", "joeddav/xlm-roberta-large-xnli")
+    device_name = "cpu"
+    cuda_available = False
+    try:
+        import torch  # type: ignore
+        cuda_available = bool(torch.cuda.is_available())
+        device_name = "cuda" if cuda_available else "cpu"
+    except Exception:
+        device_name = "cpu"
+        cuda_available = False
+    print(
+        f"[NLI] requested=on backend={backend} model={model_name} "
+        f"device={device_name} cuda_available={str(cuda_available).lower()}"
+    )
+
     try:
         from transformers import pipeline  # type: ignore
-    except Exception:
-        return None, "import_error"
+    except Exception as e:
+        print(f"[NLI] load failed: {type(e).__name__}: {e}")
+        print(traceback.format_exc())
+        return None, f"import_error:{type(e).__name__}"
 
-    model_name = os.getenv("NLI_MODEL", "joeddav/xlm-roberta-large-xnli")
     try:
         return pipeline("text-classification", model=model_name), "ok"
     except Exception as e:
-        msg = str(e).lower()
-        if "out of memory" in msg or "oom" in msg:
-            return None, "oom"
-        if "not found" in msg or "404" in msg:
-            return None, "model_not_found"
-        if "token" in msg and "hf" in msg:
-            return None, "auth_required"
-        return None, "model_load_error"
+        reason = _classify_load_error(e)
+        print(f"[NLI] load failed: {type(e).__name__}: {e}")
+        print(traceback.format_exc())
+        return None, reason
 
 
 def _normalize_label(label: str) -> str:
